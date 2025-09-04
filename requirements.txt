@@ -1,0 +1,14 @@
+torch 
+torchvision 
+transformers 
+accelerate 
+peft 
+datasets 
+ftfy 
+sentencepiece 
+safetensors 
+huggingface_hub
+faiss-cpu
+pillow
+clip
+tqdm
