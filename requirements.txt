@@ -12,3 +12,4 @@ faiss-cpu
 pillow
 clip
 tqdm
+wandb
