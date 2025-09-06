@@ -1,0 +1,15 @@
+# 忽略临时文件
+*.tmp
+
+# 忽略编译输出文件夹
+/build/
+
+# 忽略日志文件
+*.log
+
+# 忽略配置文件
+config.ini
+
+#忽略生成的verifier的微调训练数据
+verifier_image_crops/
+verifier_train_vlm.jsonal

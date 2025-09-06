@@ -4,6 +4,7 @@ from pathlib import Path
 import argparse
 
 import torch
+import wandb  # 添加这行
 from PIL import Image
 from peft import LoraConfig, get_peft_model
 from transformers import (
@@ -28,8 +29,8 @@ os.environ["https_proxy"] = "http://10.109.69.32:7897"
 class VLMTrainer(Trainer):
     def __init__(self, tokenizer=None, **kwargs):
         super().__init__(**kwargs)
-        # 保存 tokenizer 引用
         self.my_tokenizer = tokenizer
+        self.step_count = 0  # 添加步数计数器
     
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         """
@@ -38,25 +39,20 @@ class VLMTrainer(Trainer):
         inputs_embeds = inputs['inputs_embeds']
         labels = inputs.get('labels', None)
         
-        # 简单的损失计算：随机初始化一个输出层
         batch_size, seq_len, hidden_size = inputs_embeds.shape
         
-        # 修复 tokenizer 访问
         if hasattr(self, 'my_tokenizer') and self.my_tokenizer is not None:
             vocab_size = len(self.my_tokenizer)
         else:
-            # 备选方案：使用常见的词汇表大小
-            vocab_size = 32000  # 常见的词汇表大小
+            vocab_size = 32000
         
-        # 创建一个简单的线性层来产生logits - 修复数据类型
         if not hasattr(self, '_temp_output_layer'):
             self._temp_output_layer = torch.nn.Linear(
                 hidden_size, 
                 vocab_size, 
-                dtype=inputs_embeds.dtype  # 使用与输入相同的数据类型
+                dtype=inputs_embeds.dtype
             ).to(inputs_embeds.device)
         
-        # 确保输出层也在正确的设备和数据类型上
         if self._temp_output_layer.weight.dtype != inputs_embeds.dtype:
             self._temp_output_layer = self._temp_output_layer.to(
                 device=inputs_embeds.device, 
@@ -65,23 +61,38 @@ class VLMTrainer(Trainer):
         
         logits = self._temp_output_layer(inputs_embeds)
         
-        # 计算损失
         if labels is not None:
             shift_logits = logits[..., :-1, :].contiguous()
             shift_labels = labels[..., 1:].contiguous()
             
             loss_fct = torch.nn.CrossEntropyLoss()
             loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
+            
+            # 添加自定义指标到 W&B
+            self.step_count += 1
+            if self.step_count % 10 == 0:  # 每10步记录一次
+                wandb.log({
+                    "custom/loss": loss.item(),
+                    "custom/batch_size": batch_size,
+                    "custom/seq_length": seq_len,
+                    "custom/learning_rate": self.get_lr(),
+                    "custom/step": self.step_count
+                })
         else:
             loss = torch.tensor(0.0, device=inputs_embeds.device, requires_grad=True)
         
-        # 创建输出对象
         from types import SimpleNamespace
         outputs = SimpleNamespace()
         outputs.loss = loss
         outputs.logits = logits
         
         return (loss, outputs) if return_outputs else loss
+    
+    def get_lr(self):
+        """获取当前学习率"""
+        for param_group in self.optimizer.param_groups:
+            return param_group['lr']
+        return 0
 
 
 # Dataset只负责加载原始数据
@@ -405,6 +416,10 @@ class VLMDataCollator:
 
 # ----------------- 主函数 -----------------
 def main(args):
+    import time
+    start_time = time.time()
+    print(f"=== 实验开始时间: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(start_time))} ===")
+    
     print("--- 步骤1: 加载基础模型和分词器 ---")
     model_id = args.model_path
     
@@ -439,6 +454,23 @@ def main(args):
     data_collator = VLMDataCollator(tokenizer=tokenizer, model=model, dataset=train_dataset)
 
     print("--- 步骤4: 开始训练 ---")
+    # 初始化 W&B
+    wandb.init(
+        project="moondream2-verifier",  # 项目名称
+        name=f"vlm-verifier-{time.strftime('%Y%m%d-%H%M%S')}",  # 运行名称
+        config={
+            "model_path": args.model_path,
+            "epochs": args.epochs,
+            "batch_size": args.batch_size,
+            "learning_rate": 1e-4,
+            "lora_r": 16,
+            "lora_alpha": 32,
+            "lora_dropout": 0.05,
+            "gradient_accumulation_steps": 4,
+        },
+        tags=["moondream2", "vlm", "verifier", "lora"]  # 标签
+    )
+
     training_args = TrainingArguments(
         output_dir=args.output_dir,
         num_train_epochs=args.epochs,
@@ -451,9 +483,15 @@ def main(args):
         save_strategy="epoch",
         bf16=torch.cuda.is_bf16_supported(),
         fp16=not torch.cuda.is_bf16_supported(),
-        report_to="none",
-        dataloader_num_workers=0,  # 禁用多进程
-        dataloader_pin_memory=False,  # 禁用pin_memory
+        report_to="wandb",  # 修改这里：从"none"改为"wandb"
+        dataloader_num_workers=0,
+        dataloader_pin_memory=False,
+        
+        # 添加更多日志配置
+        logging_dir=f"{args.output_dir}/logs",
+        eval_strategy="no",  # 如果没有验证集
+        save_total_limit=3,  # 只保留最近3个检查点
+        load_best_model_at_end=False,
     )
 
     trainer = VLMTrainer(
@@ -470,6 +508,42 @@ def main(args):
     trainer.save_model(args.output_dir)
     tokenizer.save_pretrained(args.output_dir)
     print(f"微调后的LoRA适配器和分词器已保存到: {args.output_dir}")
+    
+    # 计算时间
+    end_time = time.time()
+    total_time = end_time - start_time
+    hours = int(total_time // 3600)
+    minutes = int((total_time % 3600) // 60)
+    seconds = int(total_time % 60)
+
+    # 记录最终统计到 W&B
+    wandb.log({
+        "final/total_time_seconds": total_time,
+        "final/total_time_hours": total_time / 3600,
+        "final/final_loss": trainer.state.log_history[-1].get('train_loss', 0) if trainer.state.log_history else 0,
+        "final/total_steps": trainer.state.global_step,
+    })
+
+    # 保存模型文件到 W&B（可选）
+    wandb.save(f"{args.output_dir}/*.json")
+    wandb.save(f"{args.output_dir}/adapter_*.safetensors")
+
+    print(f"=== 实验结束时间: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(end_time))} ===")
+    print(f"=== 总耗时: {hours}小时 {minutes}分钟 {seconds}秒 ({total_time:.2f}秒) ===")
+
+    # 保存时间记录到文件
+    with open(f"{args.output_dir}/training_time.txt", "w") as f:
+        f.write(f"实验开始时间: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(start_time))}\n")
+        f.write(f"实验结束时间: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(end_time))}\n")
+        f.write(f"总耗时: {hours}小时 {minutes}分钟 {seconds}秒\n")
+        f.write(f"总耗时(秒): {total_time:.2f}\n")
+        f.write(f"W&B 项目链接: {wandb.run.url}\n")  # 添加 W&B 链接
+
+    print(f"时间记录已保存到: {args.output_dir}/training_time.txt")
+    print(f"W&B 训练监控链接: {wandb.run.url}")
+
+    # 结束 W&B 运行
+    wandb.finish()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="微调Moondream2作为Visual Verifier。")
