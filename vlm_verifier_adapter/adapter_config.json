@@ -25,10 +25,10 @@
   "rank_pattern": {},
   "revision": null,
   "target_modules": [
+    "qkv",
     "fc1",
     "proj",
-    "qkv",
-    "fc2"
+    "qkv"
   ],
   "target_parameters": null,
   "task_type": "CAUSAL_LM",
