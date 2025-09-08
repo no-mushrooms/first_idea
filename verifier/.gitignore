@@ -1,0 +1,3 @@
+vlm_verifier_adapter/*.safetensors
+vlm_verifier_adapter/*.bin
+wandb/
