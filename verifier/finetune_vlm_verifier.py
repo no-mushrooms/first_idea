@@ -11,9 +11,10 @@ from peft import LoraConfig, get_peft_model
 from transformers import (
     Trainer,
     TrainingArguments,
-    Qwen2VLForConditionalGeneration,
+    # Qwen2VLForConditionalGeneration,
     AutoTokenizer,
     AutoProcessor,
+    AutoModelForCausalLM
 )
 from torch.utils.data import Dataset
 from dataclasses import dataclass
@@ -162,14 +163,49 @@ def main(args):
     
     print("--- 步骤1: 加载 Qwen2.5-VL 模型和处理器 ---")
     
-    # 加载模型
-    print(f"  正在从 {args.model_path} 加载模型...")
-    model = Qwen2VLForConditionalGeneration.from_pretrained(
-        args.model_path,
-        torch_dtype=torch.bfloat16,  # Qwen2.5-VL 建议使用 bfloat16
-        device_map="auto",
-        trust_remote_code=True,
-    )
+    # 明确指定模型名称和版本
+    model_name = args.model_path  # 或者你想要的具体版本
+    
+    print(f"  正在从 {model_name} 加载模型...")
+    
+    try:
+        # 先尝试加载配置
+        from transformers import AutoConfig
+        config = AutoConfig.from_pretrained(
+            model_name,
+            trust_remote_code=True
+        )
+        print(f"  模型配置加载成功，hidden_size: {config.hidden_size}")
+        
+        # 加载模型
+        model = AutoModelForCausalLM.from_pretrained(
+            model_name,
+            config=config,  # 明确使用配置
+            torch_dtype=torch.bfloat16,
+            device_map="auto",
+            trust_remote_code=True,
+        )
+        
+    except Exception as e:
+        print(f"  加载失败: {e}")
+        print("  尝试清理缓存并重新下载...")
+        
+        # 清理缓存
+        import shutil
+        cache_dir = os.path.expanduser("~/.cache/huggingface/transformers")
+        if os.path.exists(cache_dir):
+            print(f"  清理缓存目录: {cache_dir}")
+            # 可选：删除特定模型的缓存
+            # shutil.rmtree(cache_dir)
+        
+        # 强制重新下载
+        model = AutoModelForCausalLM.from_pretrained(
+            model_name,
+            torch_dtype=torch.bfloat16,
+            device_map="auto",
+            trust_remote_code=True,
+            force_download=True,  # 强制重新下载
+        )
     
     # 加载处理器
     processor = AutoProcessor.from_pretrained(
