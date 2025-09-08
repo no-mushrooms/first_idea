@@ -1,6 +1,6 @@
 torch 
 torchvision 
-transformers 
+transformers>=4.37.0
 accelerate 
 peft 
 datasets 
@@ -13,3 +13,5 @@ pillow
 clip
 tqdm
 wandb
+qwen-vl-utils
+peft
