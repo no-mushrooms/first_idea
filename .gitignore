@@ -12,4 +12,11 @@ config.ini
 
 #忽略生成的verifier的微调训练数据
 verifier_image_crops/
-verifier_train_vlm.jsonal
+
+verifier_train_vlm.jsonl
+
+/_pycache_/
+
+vlm_verifier_adapter/
+
+wandb/

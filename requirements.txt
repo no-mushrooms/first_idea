@@ -13,3 +13,4 @@ pillow
 clip
 tqdm
 wandb
+scikit-learn

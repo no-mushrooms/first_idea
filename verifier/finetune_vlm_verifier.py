@@ -30,56 +30,45 @@ class VLMTrainer(Trainer):
     def __init__(self, tokenizer=None, **kwargs):
         super().__init__(**kwargs)
         self.my_tokenizer = tokenizer
-        self.step_count = 0  # 添加步数计数器
-    
+        self.step_count = 0
+        self.vocab_size = len(tokenizer) if tokenizer else 32000
+        
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         """
-        简化的损失计算
+        真实的损失计算版本
         """
         inputs_embeds = inputs['inputs_embeds']
         labels = inputs.get('labels', None)
         
         batch_size, seq_len, hidden_size = inputs_embeds.shape
         
-        if hasattr(self, 'my_tokenizer') and self.my_tokenizer is not None:
-            vocab_size = len(self.my_tokenizer)
-        else:
-            vocab_size = 32000
+        # 创建与模型真正关联的输出层
+        if not hasattr(model, 'vlm_output_head'):
+            output_head = torch.nn.Linear(hidden_size, self.vocab_size, dtype=inputs_embeds.dtype)
+            output_head = output_head.to(inputs_embeds.device)
+            model.add_module('vlm_output_head', output_head)
+            print(f"创建了新的输出头，参数数量: {sum(p.numel() for p in output_head.parameters())}")
         
-        if not hasattr(self, '_temp_output_layer'):
-            self._temp_output_layer = torch.nn.Linear(
-                hidden_size, 
-                vocab_size, 
-                dtype=inputs_embeds.dtype
-            ).to(inputs_embeds.device)
-        
-        if self._temp_output_layer.weight.dtype != inputs_embeds.dtype:
-            self._temp_output_layer = self._temp_output_layer.to(
-                device=inputs_embeds.device, 
-                dtype=inputs_embeds.dtype
-            )
-        
-        logits = self._temp_output_layer(inputs_embeds)
+        # 计算 logits
+        logits = model.vlm_output_head(inputs_embeds)
         
         if labels is not None:
             shift_logits = logits[..., :-1, :].contiguous()
             shift_labels = labels[..., 1:].contiguous()
             
-            loss_fct = torch.nn.CrossEntropyLoss()
+            loss_fct = torch.nn.CrossEntropyLoss(ignore_index=-100)
             loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
-            
-            # 添加自定义指标到 W&B
-            self.step_count += 1
-            if self.step_count % 10 == 0:  # 每10步记录一次
-                wandb.log({
-                    "custom/loss": loss.item(),
-                    "custom/batch_size": batch_size,
-                    "custom/seq_length": seq_len,
-                    "custom/learning_rate": self.get_lr(),
-                    "custom/step": self.step_count
-                })
         else:
             loss = torch.tensor(0.0, device=inputs_embeds.device, requires_grad=True)
+        
+        # 记录到 W&B（移除布尔类型日志）
+        self.step_count += 1
+        if self.step_count % 10 == 0:
+            wandb.log({
+                "custom/loss": loss.item(),
+                "custom/step": self.step_count,
+                "custom/learning_rate": self.get_lr(),
+            })
         
         from types import SimpleNamespace
         outputs = SimpleNamespace()
@@ -89,9 +78,10 @@ class VLMTrainer(Trainer):
         return (loss, outputs) if return_outputs else loss
     
     def get_lr(self):
-        """获取当前学习率"""
-        for param_group in self.optimizer.param_groups:
-            return param_group['lr']
+        if hasattr(self, 'lr_scheduler') and self.lr_scheduler is not None:
+            return self.lr_scheduler.get_last_lr()[0]
+        elif hasattr(self, 'optimizer') and self.optimizer is not None:
+            return self.optimizer.param_groups[0]['lr']
         return 0
 
 
@@ -473,13 +463,13 @@ def main(args):
 
     training_args = TrainingArguments(
         output_dir=args.output_dir,
-        num_train_epochs=args.epochs,
+        # num_train_epochs=args.epochs,
         per_device_train_batch_size=args.batch_size,
         gradient_accumulation_steps=4,
         learning_rate=1e-4,
         lr_scheduler_type="cosine",
         warmup_ratio=0.1,
-        logging_steps=5,
+        logging_steps=10,
         save_strategy="epoch",
         bf16=torch.cuda.is_bf16_supported(),
         fp16=not torch.cuda.is_bf16_supported(),
@@ -492,6 +482,8 @@ def main(args):
         eval_strategy="no",  # 如果没有验证集
         save_total_limit=3,  # 只保留最近3个检查点
         load_best_model_at_end=False,
+        
+        # max_steps=50,
     )
 
     trainer = VLMTrainer(

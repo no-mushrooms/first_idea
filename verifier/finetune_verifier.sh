@@ -2,8 +2,8 @@
 cd "$(dirname "$0")/.."   # 切到 project 根目录
 export PYTHONPATH=$(pwd)
 
-accelerate launch --num_processes=1 --gpu_ids '2'  verifier/finetune_vlm_verifier.py \
-    --verifier_train_jsonl /home/xuyan/workspace/idea/verifier_train_vlm.jsonl \
+accelerate launch --num_processes=1 --gpu_ids '6'  verifier/finetune_vlm_verifier.py \
+    --verifier_train_jsonl /home/xuyan/workspace/first_idea/verifier/verifier_train_split.jsonl \
     --image_dir /home/xuyan/workspace/idea/verifier_image_crops \
     --output_dir ./vlm_verifier_adapter \
     --epochs 3 \
