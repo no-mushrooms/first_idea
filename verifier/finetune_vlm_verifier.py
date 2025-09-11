@@ -178,7 +178,7 @@ def main(args):
         print(f"  模型配置加载成功，hidden_size: {config.hidden_size}")
         
         # 加载模型
-        model = AutoModelForCausalLM.from_pretrained(
+        model = Qwen2VLForConditionalGeneration.from_pretrained(
             model_name,
             config=config,  # 明确使用配置
             torch_dtype=torch.bfloat16,
@@ -199,7 +199,7 @@ def main(args):
             # shutil.rmtree(cache_dir)
         
         # 强制重新下载
-        model = AutoModelForCausalLM.from_pretrained(
+        model = Qwen2VLForConditionalGeneration.from_pretrained(
             model_name,
             torch_dtype=torch.bfloat16,
             device_map="auto",

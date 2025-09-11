@@ -26,3 +26,7 @@ verifier_train_llamafactory.json
 verifier_train_split.jsonl
 
 verifier_test_split.jsonl
+
+finetuned_evaluation_results.json
+
+zeroshot_evaluation_results.json

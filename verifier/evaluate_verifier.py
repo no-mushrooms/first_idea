@@ -100,8 +100,8 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="评估微调后的VLM Verifier性能。")
-    parser.add_argument("--model_path", type=str, default="vikhyatk/moondream2", help="基础模型(moondream2)的本地路径。")
-    parser.add_argument("--adapter_path", type=str, default="/home/xuyan/workspace/first_idea/vlm_verifier_adapter", help="已微调的LoRA适配器路径。")
+    parser.add_argument("--model_path", type=str, default="Qwen/Qwen2.5-VL-7B-Instruct", help="基础模型的本地路径。")
+    parser.add_argument("--adapter_path", type=str, default="/home/xuyan/workspace/LLaMA-Factory/kbvqaCoT/qwen_vl_verifier_adapter", help="已微调的LoRA适配器路径。")
     parser.add_argument("--test_file", type=str, default="verifier_test_split.jsonl", help="用于评估的.jsonl测试文件。")
     args = parser.parse_args()
     main(args)
