@@ -11,10 +11,10 @@ from peft import LoraConfig, get_peft_model
 from transformers import (
     Trainer,
     TrainingArguments,
-    # Qwen2VLForConditionalGeneration,
+    Qwen2VLForConditionalGeneration,
     AutoTokenizer,
     AutoProcessor,
-    AutoModelForCausalLM
+    # AutoModelForCausalLM
 )
 from torch.utils.data import Dataset
 from dataclasses import dataclass

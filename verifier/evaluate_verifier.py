@@ -17,7 +17,7 @@ import numpy as np
 
 def main(args):
     print("--- 步骤1: 加载微调后的模型和处理器 ---")
-    base_model_id = "vikhyatk/moondream2"
+    base_model_id = "Qwen/Qwen2.5-VL-7B-Instruct"
     
     # 加载基础模型
     base_model = AutoModelForCausalLM.from_pretrained(

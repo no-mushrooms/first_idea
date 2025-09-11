@@ -16,3 +16,7 @@ wandb
 scikit-learn
 qwen-vl-utils
 peft
+demjson3
+openai
+timm
+

@@ -20,3 +20,9 @@ verifier_train_vlm.jsonl
 vlm_verifier_adapter/
 
 wandb/
+
+verifier_train_llamafactory.json
+
+verifier_train_split.jsonl
+
+verifier_test_split.jsonl
