@@ -37,7 +37,7 @@ def convert_to_llama_factory_format(input_file, output_file):
     print(f"\n转换完成！已将 {len(new_data)} 条数据保存到 {output_file}")
 
 if __name__ == "__main__":
-    input_file = "/home/xuyan/workspace/first_idea/verifier/verifier_train_split.jsonl"
+    input_file = "/home/xuyan/workspace/idea/verifier/verifier_train_split.jsonl"
     output_file = "/home/xuyan/workspace/LLaMA-Factory/data/verifier_train_llamafactory_fixed.json"
     
     convert_to_llama_factory_format(input_file, output_file)
