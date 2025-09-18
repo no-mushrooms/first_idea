@@ -6,20 +6,20 @@ os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import torch
 
-print("开始下载 Qwen/Qwen2-7B-Instruct...")
+print("开始下载 Qwen/Qwen3-8B...")
 print(f"使用镜像: {os.environ.get('HF_ENDPOINT', 'https://huggingface.co')}")
 
 try:
     print("正在下载 tokenizer...")
     tokenizer = AutoTokenizer.from_pretrained(
-        "Qwen/Qwen2-7B-Instruct",
+        "Qwen/Qwen3-8B",
         trust_remote_code=True
     )
     print("✅ Tokenizer 下载完成")
     
     print("正在下载模型...")
     model = AutoModelForCausalLM.from_pretrained(
-        "Qwen/Qwen2-7B-Instruct",
+        "Qwen/Qwen3-8B",
         torch_dtype=torch.float16,
         trust_remote_code=True
     )
