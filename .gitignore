@@ -42,3 +42,5 @@ verifier_train_split.jsonl
 /.venv/
 /.venv-1/
 /.vscode/
+
+/planner/evaluation_result/

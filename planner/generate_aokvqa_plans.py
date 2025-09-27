@@ -15,6 +15,7 @@ from tqdm import tqdm
 import re
 import demjson3
 import traceback
+import string
 
 try:
     from kbvqa_modular_cot import HFExtractorAndGrounder
@@ -31,54 +32,88 @@ except ImportError:
 
 # -------------------- [最终优化版] 元提示 (Meta-Prompt) --------------------
 META_PROMPT_TEMPLATE = """
-You are an expert tutor creating a lesson plan for a student AI. Your task is to first EXPLAIN your reasoning step-by-step, and THEN generate a JSON array based on that reasoning.
+You are a professional AI planner. Your core task is to create a step-by-step execution plan for a student AI with limited internal knowledge (e.g., a 7B model) to solve user problems.
 
-**CRITICAL CONTEXT:** The student AI is a 7B model with limited knowledge. Your plan must be extremely explicit and foundational.
-
-**YOUR TASK**
-First, think about how to break down the user's question into the smallest logical steps. Write down your thought process in a <thinking> block. Consider what needs to be visually confirmed first and what requires external knowledge.
-
-Second, based on your reasoning in the <thinking> block, generate a pure, 100% syntactically correct JSON array.
-
-Finally, output a single JSON object with two keys: "thinking" and "plan". The "thinking" key should contain your reasoning text, and the "plan" key should contain the JSON array as a string.
----
-**JSON FORMAT & AVAILABLE TOOLS (OPERATIONS)**
-
-The JSON object for each step must use the following keys and `op` values:
-- "type": "visual" or "kb".
-- "focus": an object with "source" and "idx" for "visual", or null for "kb".
-- "hypothesis": a clear statement to be verified or queried.
-- "op": A verb for the operation. Choose from the following list of available tools:
-    - **"describe_region"**: Get a general description of a focused region.
-    - **"verify_existence"**: Verify if a specific object exists in a region.
-    - **"verify_attribute"**: Verify a specific attribute (like color, texture, state) of an object in a region. The hypothesis should be a full statement, e.g., "The bananas in region 4 are green".
-    - **"extract_text"**: Extract any text or numbers visible in a region (OCR).
-    - **"query_knowledge"**: Query for external, non-visual knowledge.
+Your output must be a single, 100% syntactically correct JSON object containing two keys: "thinking" and "plan".
 
 ---
-**EXAMPLE**
 
-Context:
-[0] a bunch of yellow bananas with a '5' sticker on them
-[1] a bunch of green bananas
+### 1. "thinking" Module Guidelines
 
-Question: What is the number written on top of the yellow bananas?
+In this module, you need to elaborate on your reasoning and analysis process step-by-step in text format. This should include:
 
-**YOUR RESPONSE (must be a single JSON object)**
+1. **Problem Decomposition**: Analyze the core intent of the user's query and break it down into the smallest, verifiable logical units.
+    
+2. **Entity Recognition**: Identify the key entities, attributes, and relationships in the image or text that require attention.
+    
+3. **Path Planning**: Plan a clear verification path. Generally, follow the principle of "visual confirmation first, then knowledge query." Explicitly state which information needs to be verified through visual tools and which requires external knowledge bases.
+    
 
-{{
-    "thinking": "1. The user wants a number from the \\"yellow\\" bananas.\\n2. I see two bunches of bananas, in region 0 and region 1.\\n3. First, I need to identify which bunch is yellow.\\n    - Step 1: Check if bananas in region 0 are yellow.\\n    - Step 2: Check if bananas in region 1 are yellow.\\n4. Once I confirm region 0 contains the yellow bananas, I need to extract the number from it.\\n    - Step 3: Use the text extraction tool on region 0.\\n5. This sequence of steps (verify color, then extract text) will answer the question.",
-    "plan": "[{{\\"type\\": \\"visual\\", \\"focus\\": {{\\" source\\": \\"detr\\", \\"idx\\": 0}}, \\"op\\": \\"verify_attribute\\", \\"hypothesis\\": \\"The bananas in region 0 are yellow\\"}}, {{ \\" type\\": \\"visual\\", \\"focus\\": {{\\"source\\": \\"detr\\", \\"idx\\": 1}}, \\"op\\": \\"verify_attribute\\", \\"hypothesis\\": \\"The bananas in region 1 are yellow\\"}}, {{\\"type\\": \\"visual\\", \\"focus\\": {{\\"source\\": \\"detr\\", \\"idx\\": 0}}, \\"op\\": \\"extract_text\\", \\"hypothesis\\": \\"Extract the number written on the bananas in region 0\\"}}] "
-}}
+---
+
+### 2. "plan" Module Guidelines
+
+In this module, you need to provide a pure and 100% syntactically correct JSON array in string format. **Fundamental Principle**: This plan is intended to "guide" the student AI on how to find the answer step-by-step. **It is strictly forbidden to include any conclusions or final answers in the plan**. You must assume you are a planner with no world knowledge. **JSON Structure of Plan Steps**: Each step in the array is a JSON object and must contain the following keys:
+
+- `"type"`: `(string)` The type of operation, must be either `"visual"` or `"kb"`.
+    
+- `"focus"`: `(object)` The focus of the operation.
+    
+    - When `type` is `"visual"`, the value is an object like `{"source": "detector", "idx": 0}`.
+        
+    - When `type` is `"kb"`, the value is `null`.
+        
+- `"op"`: `(string)` The specific action verb, e.g., `"verify_existence"`, `"verify_attribute"`, `"query_knowledge"`.
+    
+- `"hypothesis"`: `(string)` The hypothesis to be verified or queried, the format of which **strictly depends on the "type"**.
+    
+- **Key Rule: `hypothesis` Format**
+    
+- This is the most important rule and must be strictly followed:
+    
+- **If `type` is `"visual"`**: The `hypothesis` **must** be a complete **declarative sentence** to be verified.
+    
+    - **Example**: "The object in region 0 is a teddy bear."
+        
+- **If `type` is `"kb"`**: The `hypothesis` **must** be a neutral **interrogative sentence** to be queried.
+    
+    - **Example**: "With what demographic are teddy bears typically associated?" It is **absolutely forbidden** to use a declarative sentence in a `"kb"` step or an interrogative sentence in a `"visual"` step.
+        
+
+---
+
+### Core Constraints
+
+1. **No Reliance on Internal Knowledge**: All your planning steps must be based on information that can be explicitly derived from the image (visual) or a knowledge base (kb).
+    
+2. **Atomic Steps**: Ensure that each step is the smallest logical unit; do not skip any reasoning links.
+    
+3. **Strict Formatting**: The final output must be a single JSON object containing the "thinking" and "plan" keys.
+    
+
+---
+
+### Few-Shot Example (Demonstrating correct decomposition and questioning)
+
+**Context**: 
+[0] A teddy bear is sitting on a bed 
+
+**Question**: What type of person might this room belong to? 
+
+**Your Answer (Must be a single JSON object)：**
+{ 
+    "thinking": "1. The user wants to infer the type of person who owns the room.\\n2. The main clue in the context is a 'teddy bear' in region 0.\\n3. I cannot answer directly. I must first confirm the key object and then query its common associations.\\n4. Step 1 (visual): I must first verify that the object in region 0 is indeed a teddy bear. This grounds my reasoning in the image.\\n5. Step 2 (kb): Once I've confirmed it's a teddy bear, I need to ask a general knowledge question about what kind of people are associated with teddy bears. This must be a question, not a statement.", 
+    "plan": "[{\\"type\\": \\"visual\\", \\"focus\\": {\\"source\\": \\"detr\\", \\"idx\\": 0}, \\"op\\": \\"verify_existence\\", \\"hypothesis\\": \\"The object in region 0 is a teddy bear\\"}, {\\"type\\": \\"kb\\", \\"focus\\": null, \\"op\\": \\"query_knowledge\\", \\"hypothesis\\": \\"What type of person are teddy bears typically associated with?\\"}]" 
+}
 
 ---
 
 **NOW, YOUR TURN**
 
 Context:
-{context_string}
+${context_string}
 
-Question: {question_string}
+Question: ${question_string}
 
 **YOUR RESPONSE(must be a single JSON object):**
 """
@@ -88,7 +123,9 @@ def generate_plan_with_teacher_model(client, context_str, question_str, model_na
     使用教师模型生成plan，并返回包含thinking和plan的完整Python字典。
     [V4 - 终极健壮版]
     """
-    prompt = META_PROMPT_TEMPLATE.format(
+    # 使用 string.Template 替代 .format()
+    template = string.Template(META_PROMPT_TEMPLATE)
+    prompt = template.substitute(
         context_string=context_str,
         question_string=question_str
     )
@@ -98,7 +135,6 @@ def generate_plan_with_teacher_model(client, context_str, question_str, model_na
             model=model_name,
             messages=[{"role": "user", "content": prompt}],
             temperature=0.1,
-            # 我们暂时去掉 response_format，因为我们要自己手动解析，这样更可靠
         )
         raw_text = response.choices[0].message.content
     except Exception as e:
@@ -125,11 +161,16 @@ def generate_plan_with_teacher_model(client, context_str, question_str, model_na
         
         # 5. 验证返回的对象是否是我们期望的格式
         if isinstance(response_obj, dict) and 'thinking' in response_obj and 'plan' in response_obj:
-            # print("[成功] 已成功提取并解析包含thinking和plan的JSON对象。")
             return response_obj # 直接返回整个Python字典
         else:
             print(f"[ERROR] 解析出的JSON对象缺少 'thinking' 或 'plan' 键。")
             return None
+            
+    except json.JSONDecodeError as e:
+        print(f"\n【JSON解析失败】: {e}", flush=True)
+        print("  原始回复文本:\n---\n" + raw_text + "\n---")
+        print("  尝试解析的子串:\n---\n" + json_str_candidate + "\n---")
+        return None
             
     except json.JSONDecodeError as e:
         print(f"\n【JSON解析失败】: {e}", flush=True)

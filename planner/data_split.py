@@ -2,7 +2,7 @@ import json
 from sklearn.model_selection import train_test_split # 导入专业的分割工具
 
 # 读取你完整的数据集
-full_data = [json.loads(line) for line in open('planner_aokvqa_openai_thinkAndPlan.jsonl', 'r')]
+full_data = [json.loads(line) for line in open('planner_aokvqa_openai_thinkAndPlan_newPromptMiniTest.jsonl', 'r')]
 
 # 使用80/20的比例分割，random_state确保每次分割结果都一样
 train_data, test_data = train_test_split(full_data, test_size=0.2, random_state=42)

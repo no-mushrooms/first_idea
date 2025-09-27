@@ -51,48 +51,38 @@ def extract_json_from_text(text):
     
     return None
 
-def batch_inference(model, tokenizer, prompts, batch_size=4):
-    """批量推理函数"""
-    results = []
+def batch_inference_single(model, tokenizer, prompts):
+    """推理单个批次（不包含循环）"""
+    inputs = tokenizer(
+        prompts, 
+        return_tensors="pt", 
+        padding=True, 
+        truncation=True,
+        max_length=2048,
+        padding_side='left'
+    ).to(model.device)
     
-    for i in range(0, len(prompts), batch_size):
-        batch_prompts = prompts[i:i + batch_size]
-        
-        # 批量tokenize
-        inputs = tokenizer(
-            batch_prompts, 
-            return_tensors="pt", 
-            padding=True, 
-            truncation=True,
-            max_length=2048,
-            padding_side='left'     # 🚀 明确指定左填充
-        ).to(model.device)
-        
-        with torch.no_grad():
-            # 🚀 优化的生成配置
-            outputs = model.generate(
-                **inputs, 
-                max_new_tokens=512,      # 🔧 减少生成长度
-                do_sample=False, 
-                # temperature=0.0,
-                pad_token_id=tokenizer.pad_token_id,
-                # 🚀 性能优化参数
-                use_cache=True,          # 启用KV缓存
-                num_beams=1,            # 单束搜索
-                # early_stopping=True,     # JSON完成即停止
-                # 🛑 停止条件
-                eos_token_id=tokenizer.eos_token_id,
-                # pad_token_id=tokenizer.pad_token_id,
-            )
-        
-        # 解码结果
-        input_length = inputs['input_ids'].shape[1]
-        for j, output in enumerate(outputs):
-            generated_text = tokenizer.decode(
-                output[input_length:], 
-                skip_special_tokens=True
-            )
-            results.append(generated_text)
+    with torch.no_grad():
+        outputs = model.generate(
+            input_ids=inputs['input_ids'],
+            attention_mask=inputs['attention_mask'],
+            max_new_tokens=512,
+            do_sample=False,
+            pad_token_id=tokenizer.pad_token_id,
+            use_cache=True,
+            num_beams=1,
+            eos_token_id=tokenizer.eos_token_id,
+        )
+    
+    # 解码结果
+    input_length = inputs['input_ids'].shape[1]
+    results = []
+    for output in outputs:
+        generated_text = tokenizer.decode(
+            output[input_length:], 
+            skip_special_tokens=True
+        )
+        results.append(generated_text)
     
     return results
 
@@ -102,23 +92,19 @@ def main(args):
     try:
         print(f"  [信息] 正在从本地路径 {args.model_path} 加载基础模型...")
         
-        # 🚀 优化的模型加载配置
         base_model = AutoModelForCausalLM.from_pretrained(
             args.model_path,
-            torch_dtype=torch.float16,  # 或 torch.bfloat16 如果支持
+            torch_dtype=torch.float16,
             device_map="auto",
             local_files_only=True,
             trust_remote_code=True,
-            # 🚀 性能优化
-            low_cpu_mem_usage=True,     # 减少CPU内存使用
-            # torch_compile=False,        # 避免编译开销（可选）
+            low_cpu_mem_usage=True,
         )
         
         print(f"  [信息] 正在从 {args.adapter_path} 加载LoRA适配器...")
         model = PeftModel.from_pretrained(base_model, args.adapter_path)
         model.eval()
         
-        # 🚀 模型优化
         if hasattr(model, 'merge_and_unload'):
             print("  [优化] 合并LoRA权重以提升推理速度...")
             model = model.merge_and_unload()
@@ -128,7 +114,7 @@ def main(args):
             args.model_path, 
             trust_remote_code=True,
             local_files_only=True,
-            padding_side='left'     # 🚀 修复：设置左填充
+            padding_side='left'
         )
         
         if tokenizer.pad_token is None:
@@ -149,11 +135,12 @@ def main(args):
 
     print("\n--- 步骤3: 批量推理和评估 ---")
     
-    # 🚀 预处理：提取所有prompts
+    # 预处理：提取所有prompts
     prompts = []
     valid_indices = []
     
-    for idx, item in enumerate(test_data):
+    print("  正在预处理数据...")
+    for idx, item in enumerate(tqdm(test_data, desc="提取prompts")):
         try:
             human_prompt = item['conversations'][0]['value']
             prompts.append(human_prompt)
@@ -163,18 +150,33 @@ def main(args):
     
     print(f"  有效样本数: {len(prompts)}")
     
-    # 🚀 批量推理
-    batch_size = args.batch_size if hasattr(args, 'batch_size') else 4
+    # 批量推理
+    batch_size = getattr(args, 'batch_size', 4)
     print(f"  使用批量大小: {batch_size}")
     
     start_time = time.time()
-    generated_texts = batch_inference(model, tokenizer, prompts, batch_size)
+    generated_texts = []
+    
+    # 添加推理进度条
+    with tqdm(total=len(prompts), desc="批量推理", unit="样本") as pbar:
+        for i in range(0, len(prompts), batch_size):
+            batch_prompts = prompts[i:i + batch_size]
+            
+            # 推理单个批次
+            batch_results = batch_inference_single(model, tokenizer, batch_prompts)
+            generated_texts.extend(batch_results)
+            
+            # 更新进度条
+            pbar.update(len(batch_prompts))
+    
     inference_time = time.time() - start_time
     
     print(f"  推理完成，耗时: {inference_time:.2f}秒")
     print(f"  平均每样本: {inference_time/len(prompts):.3f}秒")
     
-    # 评估逻辑（保持不变）
+    print("\n--- 步骤4: 评估结果 ---")
+    
+    # 初始化统计变量
     total_samples = 0
     valid_json_count = 0
     step_count_matches = 0
@@ -188,10 +190,9 @@ def main(args):
     step_type_mismatches = []
     processing_errors = []
     successful_cases = []
-
-    print("\n--- 步骤4: 评估结果 ---")
     
-    for i, generated_text in enumerate(tqdm(generated_texts, desc="分析结果")):
+    # 添加评估进度条
+    for i, generated_text in enumerate(tqdm(generated_texts, desc="分析结果", unit="样本")):
         total_samples += 1
         item_idx = valid_indices[i]
         item = test_data[item_idx]
@@ -280,7 +281,7 @@ def main(args):
             })
             continue
 
-    # 计算和打印结果（保持原有逻辑）
+    # 计算最终指标
     json_validity_rate = (valid_json_count / total_samples) * 100 if total_samples > 0 else 0
     step_count_match_rate = (step_count_matches / valid_json_count) * 100 if valid_json_count > 0 else 0
     step_type_accuracy = (step_type_correct / step_type_total) * 100 if step_type_total > 0 else 0
@@ -299,21 +300,47 @@ def main(args):
     print(f"  完美匹配案例: {len(successful_cases)} 条")
     print("="*50)
 
-    # 保存结果（简化版）
-    results = {
-        "total_samples": total_samples,
-        "inference_time": inference_time,
-        "avg_time_per_sample": inference_time / total_samples,
-        "json_validity_rate": json_validity_rate,
-        "step_count_match_rate": step_count_match_rate,
-        "step_type_accuracy": step_type_accuracy,
-        "perfect_matches": len(successful_cases)
+    # 错误类型统计
+    print("\n--- 错误类型统计 ---")
+    print(f"  标准答案解析错误: {len(golden_plan_failures)} 条")
+    print(f"  模型JSON解析失败: {len(json_parse_failures)} 条")
+    print(f"  步骤数量不匹配: {len(step_count_mismatches)} 条")
+    print(f"  步骤类型不匹配: {len(step_type_mismatches)} 条")
+    print(f"  其他处理错误: {len(processing_errors)} 条")
+    print(f"  完美匹配案例: {len(successful_cases)} 条")
+
+    # 保存详细结果
+    detailed_results = {
+        "summary": {
+            "total_samples": total_samples,
+            "inference_time": inference_time,
+            "avg_time_per_sample": inference_time / total_samples,
+            "json_validity_rate": json_validity_rate,
+            "step_count_match_rate": step_count_match_rate,
+            "step_type_accuracy": step_type_accuracy,
+            "perfect_matches": len(successful_cases)
+        },
+        "error_analysis": {
+            "golden_plan_failures": len(golden_plan_failures),
+            "json_parse_failures": len(json_parse_failures),
+            "step_count_mismatches": len(step_count_mismatches),
+            "step_type_mismatches": len(step_type_mismatches),
+            "processing_errors": len(processing_errors)
+        },
+        "detailed_errors": {
+            "golden_plan_failures": golden_plan_failures[:5],  # 只保存前5个样例
+            "json_parse_failures": json_parse_failures[:5],
+            "step_count_mismatches": step_count_mismatches[:5],
+            "step_type_mismatches": step_type_mismatches[:5],
+            "processing_errors": processing_errors[:5]
+        },
+        "successful_cases": successful_cases[:5]  # 只保存前5个成功样例
     }
     
-    output_file = args.test_file.replace('.json', '_fast_evaluation_results.json')
+    output_file = args.test_file.replace('.json', '_complete_evaluation_results.json')
     with open(output_file, 'w', encoding='utf-8') as f:
-        json.dump(results, f, indent=2, ensure_ascii=False)
-    print(f"📊 快速评估结果已保存到: {output_file}")
+        json.dump(detailed_results, f, indent=2, ensure_ascii=False)
+    print(f"📊 完整评估结果已保存到: {output_file}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="快速评估微调后的CoT Planner性能。")

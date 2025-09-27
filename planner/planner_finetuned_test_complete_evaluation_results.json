@@ -1,0 +1,170 @@
+{
+  "summary": {
+    "total_samples": 3392,
+    "inference_time": 24145.23334503174,
+    "avg_time_per_sample": 7.118288132379639,
+    "json_validity_rate": 43.985849056603776,
+    "step_count_match_rate": 28.9544235924933,
+    "step_type_accuracy": 0.0,
+    "perfect_matches": 432
+  },
+  "error_analysis": {
+    "golden_plan_failures": 0,
+    "json_parse_failures": 1900,
+    "step_count_mismatches": 1060,
+    "step_type_mismatches": 0,
+    "processing_errors": 0
+  },
+  "detailed_errors": {
+    "golden_plan_failures": [],
+    "json_parse_failures": [
+      {
+        "id": "planner_0",
+        "error_type": "json_parse_failure",
+        "generated_text": " \n\nChoices:\nA. To show the time\nB. To show the weather\nC. To show the date\nD. To show the temperature\n\nAnswer: A\n\nQuestion: What is the main purpose of the ship shown here? \n\nChoices:\nA. To show the t...",
+        "error_msg": "无法从生成文本中提取有效的JSON"
+      },
+      {
+        "id": "planner_2",
+        "error_type": "json_parse_failure",
+        "generated_text": " \n\nAnswer: They are carrying bags because they are going to the airport.\n\nStep-by-step Explanation:\nStep 1: Identify the relevant regions. The regions that contain people carrying bags are region 2 an...",
+        "error_msg": "无法从生成文本中提取有效的JSON"
+      },
+      {
+        "id": "planner_5",
+        "error_type": "json_parse_failure",
+        "generated_text": " \n\nAnswer: Yes, the company made the pink racket.\n\nThe answer is correct. \n\nExplanation: The answer is correct because the visual context shows a tennis racket, and the question is asking if the compa...",
+        "error_msg": "无法从生成文本中提取有效的JSON"
+      },
+      {
+        "id": "planner_7",
+        "error_type": "json_parse_failure",
+        "generated_text": " \n\nAnswer: There is no information about the Chicago Sun-Times box in the provided context.\nAnswer: There is no information about the Chicago Sun-Times box in the provided context.\n\nWait, but I see a ...",
+        "error_msg": "无法从生成文本中提取有效的JSON"
+      },
+      {
+        "id": "planner_10",
+        "error_type": "json_parse_failure",
+        "generated_text": " \n\nAnswer: There are no white paper items on the shelf near the teapot.\n\nThe answer is incorrect. The white paper bag is on the table, not on a shelf. The teapot is on the table as well. So the white ...",
+        "error_msg": "无法从生成文本中提取有效的JSON"
+      }
+    ],
+    "step_count_mismatches": [
+      {
+        "id": "planner_1",
+        "error_type": "step_count_mismatch",
+        "generated_count": 1,
+        "golden_count": 6
+      },
+      {
+        "id": "planner_4",
+        "error_type": "step_count_mismatch",
+        "generated_count": 1,
+        "golden_count": 2
+      },
+      {
+        "id": "planner_6",
+        "error_type": "step_count_mismatch",
+        "generated_count": 1,
+        "golden_count": 2
+      },
+      {
+        "id": "planner_8",
+        "error_type": "step_count_mismatch",
+        "generated_count": 1,
+        "golden_count": 5
+      },
+      {
+        "id": "planner_9",
+        "error_type": "step_count_mismatch",
+        "generated_count": 1,
+        "golden_count": 6
+      }
+    ],
+    "step_type_mismatches": [],
+    "processing_errors": []
+  },
+  "successful_cases": [
+    {
+      "id": "planner_3",
+      "generated_plan": [
+        5
+      ],
+      "golden_plan": [
+        {
+          "type": "kb",
+          "focus": null,
+          "op": "query_knowledge",
+          "hypothesis": "What are the common ways for men to get off a snow-covered mountain?"
+        }
+      ],
+      "match_status": "perfect_match"
+    },
+    {
+      "id": "planner_22",
+      "generated_plan": [
+        2
+      ],
+      "golden_plan": [
+        {
+          "type": "kb",
+          "focus": null,
+          "op": "query_knowledge",
+          "hypothesis": "What are the different types of baseball throws?"
+        }
+      ],
+      "match_status": "perfect_match"
+    },
+    {
+      "id": "planner_23",
+      "generated_plan": [
+        4
+      ],
+      "golden_plan": [
+        {
+          "type": "visual",
+          "focus": {
+            "source": "detr",
+            "idx": 1
+          },
+          "op": "describe_region",
+          "hypothesis": "Identify the color of the little wedges on top of the salad in region 1"
+        }
+      ],
+      "match_status": "perfect_match"
+    },
+    {
+      "id": "planner_24",
+      "generated_plan": [
+        2
+      ],
+      "golden_plan": [
+        {
+          "type": "visual",
+          "focus": {
+            "source": "detr",
+            "idx": 4
+          },
+          "op": "describe_region",
+          "hypothesis": "There is a utensil located in the bottom right region"
+        }
+      ],
+      "match_status": "perfect_match"
+    },
+    {
+      "id": "planner_36",
+      "generated_plan": [
+        2
+      ],
+      "golden_plan": [
+        {
+          "type": "kb",
+          "focus": null,
+          "op": "query_knowledge",
+          "hypothesis": "What types of outerwear do women typically wear?"
+        }
+      ],
+      "match_status": "perfect_match"
+    }
+  ]
+}

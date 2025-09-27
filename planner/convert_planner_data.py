@@ -109,9 +109,9 @@ def convert_planner_data_with_thinking_as_instruction(input_file, output_file):
     将thinking作为system指令的三段式对话格式转换版本
     
     格式：
-    System: 角色定义 + thinking推理过程（作为思考指导）
+    System: 角色定义 
     Human: 纯净的Context + Question  
-    Assistant: 纯JSON计划输出
+    Assistant: thinking推理过程+纯JSON计划输出
     """
     converted_data = []
     failed_samples = []
@@ -135,22 +135,48 @@ def convert_planner_data_with_thinking_as_instruction(input_file, output_file):
                 
                 
                 # 构建system prompt（角色定义 + thinking指导）
-                system_prompt = f"""You are an expert AI planning assistant that breaks down visual question-answering tasks into structured execution steps.
-                
-                            Your role is to analyze the given context and question, then generate a precise JSON array plan with the following operations:
-                            - "describe_region": Get a general description of a focused region
-                            - "verify_existence": Verify if a specific object exists in a region  
-                            - "verify_attribute": Verify a specific attribute (like color, texture, state)
-                            - "extract_text": Extract any text or numbers visible in a region (OCR)
-                            - "query_knowledge": Query for external, non-visual knowledge
+                system_prompt = """You are an AI assistant that generates structured reasoning plans.
 
-                            **Analysis and Reasoning Framework:**
-                            {thinking_text}
+                    Your entire response MUST be a single, syntactically correct JSON object. This object must contain exactly two keys: "Analysis" and "Plan". Do not output any text, explanations, or code formatting before or after the JSON object.
 
-                            **Output Format:** Generate ONLY a JSON array in this exact format:
-                            [{{"type": "visual/kb", "focus": {{"source": "detr", "idx": <index>}}, "op": "<operation>", "hypothesis": "<description>"}}]
+                    **1. `Analysis` Key Rules:**
+                    The value must be a string that explains the step-by-step reasoning process. You must:
+                    - Deconstruct the user's question into its simplest parts.
+                    - Identify which information must be verified visually (`visual`).
+                    - Identify which information requires external knowledge (`kb`).
 
-                            Follow the reasoning framework above to determine the optimal sequence of operations."""
+                    **2. `Plan` Key Rules:**
+                    The value must be a STRING containing a valid JSON array.
+                    - The plan must contain steps to FIND an answer, not the answer itself. Assume you have no prior knowledge.
+                    - Each step in the array is an object with four keys: `type`, `focus`, `op`, `hypothesis`.
+
+                    **3. CRITICAL RULE: `hypothesis` Formatting**
+                    The format of the `hypothesis` string is STRICTLY determined by the `type` key.
+                    - If `type` is **"visual"**: The `hypothesis` MUST be a **declarative statement** to be verified.
+                    - Correct Example: "The object in region 0 is a teddy bear."
+                    - If `type` is **"kb"**: The `hypothesis` MUST be a **neutral question** to be queried.
+                    - Correct Example: "What demographic is typically associated with teddy bears?"
+
+                    **Do NOT mix these formats.** Do not use a question for "visual" or a statement for "kb".
+                    ---
+                    ### Few-Shot Example (Demonstrating correct decomposition and questioning)
+
+                    **Context**: 
+                    [0] A teddy bear is sitting on a bed 
+
+                    **Question**: What type of person might this room belong to? 
+
+                    **Your Answer (Must be a single JSON object)：**
+                    { 
+                        "thinking": "1. The user wants to infer the type of person who owns the room.\\n2. The main clue in the context is a 'teddy bear' in region 0.\\n3. I cannot answer directly. I must first confirm the key object and then query its common associations.\\n4. Step 1 (visual): I must first verify that the object in region 0 is indeed a teddy bear. This grounds my reasoning in the image.\\n5. Step 2 (kb): Once I've confirmed it's a teddy bear, I need to ask a general knowledge question about what kind of people are associated with teddy bears. This must be a question, not a statement.", 
+                        "plan": "[{\\"type\\": \\"visual\\", \\"focus\\": {\\"source\\": \\"detr\\", \\"idx\\": 0}, \\"op\\": \\"verify_existence\\", \\"hypothesis\\": \\"The object in region 0 is a teddy bear\\"}, {\\"type\\": \\"kb\\", \\"focus\\": null, \\"op\\": \\"query_knowledge\\", \\"hypothesis\\": \\"What type of person are teddy bears typically associated with?\\"}]" 
+                    }
+                    ---
+                    **Summary of Your Task:**
+                    - Receive user input (Context and Question).
+                    - Output a single JSON object with "thinking" and "plan" keys.
+                    - Follow all formatting rules precisely.
+                """
 
                 # 构建human prompt（纯净的输入）
                 human_prompt = f"""Context:\n{context_str}\n\nQuestion: {item['question']}"""
@@ -172,7 +198,7 @@ def convert_planner_data_with_thinking_as_instruction(input_file, output_file):
                     assistant_response = f"JSON Array:\n{json.dumps(plan_str)}"
                 
                 # 组合thinking和plan
-                # assistant_response = f"Thinking:\n{thinking_text}\n\nJSON Array:\n{plan_str}"
+                assistant_response = f"Analysis:\n{thinking_text}\n\nPlan:\n{plan_str}"
                 
                 # 构建LLaMA-Factory三段式对话格式
                 converted_item = {
@@ -304,13 +330,13 @@ if __name__ == "__main__":
     
     parser = argparse.ArgumentParser(description="转换新格式planner数据为LLaMA-Factory格式")
     parser.add_argument("--input_file", type=str,default="planner_train_split.jsonl", help="输入的jsonl文件路径")
-    parser.add_argument("--output_file", type=str, default="/home/xuyan/workspace/LLaMA-Factory/data/planner_llama_factory.json",help="输出的json文件路径")
+    parser.add_argument("--output_file", type=str, default="/home/xuyan/workspace/LLaMA-Factory/data/planner_llama_factory_newPromptMini.json",help="输出的json文件路径")
     parser.add_argument("--include_thinking", action="store_true",help="是否在输出中包含thinking过程")
-    parser.add_argument("--thinking_as_instruction", action="store_true", help="将thinking作为指令输入")
+    parser.add_argument("--include_thinking_system", action="store_true", help="存在system指令")
     
     args = parser.parse_args()
     
-    if args.thinking_as_instruction:
+    if args.include_thinking_system:
         print("thinking作为指令的转换")
         convert_planner_data_with_thinking_as_instruction(args.input_file, args.output_file)
     elif args.include_thinking:
